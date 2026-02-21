@@ -10,19 +10,17 @@ class DrivingStereoDataset(BaseDepthDataset):
     RAW_WIDTH = 1762
     IMGFOLDER = "left-image-full-size"
     DEPTHFOLDER = "depth-map-full-size"
-    def __init__(
-        self,
-        **kwargs):
+    def __init__(self, **kwargs):
         super(DrivingStereoDataset, self).__init__(
             min_depth=1e-6,
-            max_depth=80,
+            max_depth=114,
             has_filled_depth=False,
             name_mode=DepthFileNameMode.id_,
             **kwargs)
         self.forename = {
             "rainy": "2018-08-17-09-45-58_2018-08-17-10-", 
             "foggy": "2018-10-25-07-37-26_2018-10-25-"}
-
+        
         # Load filenames
         self.weather = 'rainy' if 'rainy' in self.filename_ls_path else 'foggy'
     
@@ -47,7 +45,7 @@ class DrivingStereoDataset(BaseDepthDataset):
     
     def _read_depth_file(self, rel_path):
         depth_in = self._read_image(rel_path)
-        depth_decoded = depth_in / 256.0
+        depth_decoded = depth_in / 256.
         return depth_decoded
 
     def _load_depth_data(self, depth_rel_path, filled_rel_path):
@@ -55,7 +53,7 @@ class DrivingStereoDataset(BaseDepthDataset):
         depth_raw = self._read_depth_file(depth_rel_path).squeeze()
         depth_raw_linear = torch.from_numpy(depth_raw.copy()).float().unsqueeze(0)  # [1, H, W]
         depth_data["depth_raw_linear"] = depth_raw_linear.clone()
-        
+        # color.crop((0, 250, w, h))
         if self.has_filled_depth:
             depth_filled = self._read_depth_file(filled_rel_path).squeeze()
             depth_filled_linear = torch.from_numpy(depth_filled.copy()).float().unsqueeze(0)
@@ -78,4 +76,4 @@ if __name__ == '__main__':
     print(itemd["rgb_relative_path"])
     print(itemd["rgb_int"].shape)
     print(itemd["rgb_norm"].shape)
-    print(itemd["depth_filled_linear"].shape)
+    print(torch.max(itemd["depth_filled_linear"]))

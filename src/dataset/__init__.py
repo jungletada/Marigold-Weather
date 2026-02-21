@@ -56,7 +56,7 @@ from .vkitti_dataset import VirtualKITTIDepthDataset
 from .weatherkitti_dataset import \
     WeatherKITTIDepthMixedDataset, KITTIDepthDataset
 from .kitti_latent_dataset import  WeatherKITTILatentGroupedDataset
-
+from .cadc_dataset import CADCDataset
 
 dataset_name_class_dict = {
     "hypersim_depth": HypersimDepthDataset,
@@ -78,7 +78,8 @@ dataset_name_class_dict = {
     "hypersim_iid": HypersimIIDDataset,
     "weather_depth_kitti": WeatherKITTIDepthMixedDataset,
     "weather_depth_kitti_eval": WeatherKITTIDepthMixedDataset,
-    "weather_kitti":  WeatherKITTILatentGroupedDataset
+    "weather_kitti": WeatherKITTILatentGroupedDataset,
+    "cadcd": CADCDataset
 }
 
 

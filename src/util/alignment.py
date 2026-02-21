@@ -62,11 +62,12 @@ def align_depth_least_square(
         gt.shape == pred.shape == valid_mask.shape
     ), f"Shapes are not matched! GT:{gt.shape}, Pred: {pred.shape}, Mask: {valid_mask.shape}"
 
-    gt_masked = gt[valid_mask].reshape((-1, 1))
-    pred_masked = pred[valid_mask].reshape((-1, 1))
+    # Ensure float32 for numpy linalg (float16 is unsupported)
+    gt_masked = gt[valid_mask].reshape((-1, 1)).astype(np.float32, copy=False)
+    pred_masked = pred[valid_mask].reshape((-1, 1)).astype(np.float32, copy=False)
     # numpy solver
-    _ones = np.ones_like(pred_masked)
-    A = np.concatenate([pred_masked, _ones], axis=-1)
+    _ones = np.ones_like(pred_masked, dtype=np.float32)
+    A = np.concatenate([pred_masked, _ones], axis=-1).astype(np.float32, copy=False)
     X = np.linalg.lstsq(A, gt_masked, rcond=None)[0]
     scale, shift = X
     aligned_pred = pred_arr * scale + shift

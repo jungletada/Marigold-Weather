@@ -44,7 +44,7 @@ from diffusers import UNet2DConditionModel, AutoencoderKL, DDIMScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 from marigold.ramit_model.ramit import RAMiTCond
 from marigold import MarigoldDepthPipeline, MarigoldDepthOutput
-from marigold import LDRMDepthPipeline
+from marigold import iGlemDepthPipeline
 
 from src.dataset import (
     BaseDepthDataset,
@@ -168,7 +168,7 @@ def get_pipeline(args):
         text_encoder = CLIPTextModel.from_pretrained(args.base_checkpoint, subfolder="text_encoder")
         tokenizer = CLIPTokenizer.from_pretrained(args.base_checkpoint, subfolder="tokenizer")
         
-        pipeline = LDRMDepthPipeline(
+        pipeline = iGlemDepthPipeline(
             unet=unet,
             vae=vae,
             scheduler=scheduler,
@@ -185,7 +185,7 @@ def get_pipeline(args):
         tokenizer = CLIPTokenizer.from_pretrained(args.base_checkpoint, subfolder="tokenizer")
         unet = UNet2DConditionModel.from_pretrained(args.finetune_checkpoint, subfolder="unet")
         adapter = RAMiTCond.from_pretrained(args.finetune_checkpoint, subfolder="adapter")
-        pipeline = LDRMDepthPipeline(
+        pipeline = iGlemDepthPipeline(
             unet=unet,
             vae=vae,
             scheduler=scheduler,
@@ -350,9 +350,6 @@ if "__main__" == __name__:
             )
             
             depth_pred: np.ndarray = pipe_output.depth_np
-            # latent_output: torch.Tensor = pipe_output.latent_ts
-            # latent_output = latent_output.cpu().numpy()
-            
             # Save predictions
             rgb_filename = batch["rgb_relative_path"][0]
             rgb_basename = os.path.basename(rgb_filename)
@@ -367,5 +364,4 @@ if "__main__" == __name__:
             if os.path.exists(save_to):
                 logging.warning(f"Existing file: '{save_to}' will be overwritten")
             
-            # np.save(save_to, latent_output.squeeze())
             np.save(save_to, depth_pred)

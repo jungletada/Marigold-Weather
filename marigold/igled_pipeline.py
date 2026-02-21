@@ -245,22 +245,21 @@ class iGlemDepthPipeline(DiffusionPipeline):
             # convert to torch tensor [H, W, rgb] -> [rgb, H, W]
             rgb = pil_to_tensor(input_image)
             rgb = rgb.unsqueeze(0)  # [1, rgb, H, W]
-        elif isinstance(input_image, torch.Tensor):
-            rgb = input_image
         else:
-            raise TypeError(f"Unknown input type: {type(input_image) = }")
+            rgb = input_image
+            
         input_size = rgb.shape
         assert (
             4 == rgb.dim() and 3 == input_size[-3]
         ), f"Wrong input shape {input_size}, expected [1, rgb, H, W]"
 
         # Resize image
-        if processing_res > 0:
-            rgb = resize_max_res(
-                rgb,
-                max_edge_resolution=processing_res,
-                resample_method=resample_method,
-            )
+        # if processing_res > 0:
+        #     rgb = resize_max_res(
+        #         rgb,
+        #         max_edge_resolution=processing_res,
+        #         resample_method=resample_method,
+        #     )
 
         # Normalize rgb values
         rgb_norm: torch.Tensor = rgb / 255.0 * 2.0 - 1.0  #  [0, 255] -> [-1, 1]
@@ -320,13 +319,13 @@ class iGlemDepthPipeline(DiffusionPipeline):
             pred_uncert = None
 
         # Resize back to original resolution
-        if match_input_res:
-            final_pred = resize(
-                final_pred,
-                input_size[-2:],
-                interpolation=resample_method,
-                antialias=True,
-            )
+        # if match_input_res:
+        #     final_pred = resize(
+        #         final_pred,
+        #         input_size[-2:],
+        #         interpolation=resample_method,
+        #         antialias=True,
+        #     )
 
         # Convert to numpy
         final_pred = final_pred.squeeze()
@@ -490,10 +489,8 @@ class iGlemDepthPipeline(DiffusionPipeline):
             # convert to torch tensor [H, W, rgb] -> [rgb, H, W]
             rgb = pil_to_tensor(input_image)
             rgb = rgb.unsqueeze(0)  # [1, rgb, H, W]
-        elif isinstance(input_image, torch.Tensor):
-            rgb = input_image
         else:
-            raise TypeError(f"Unknown input type: {type(input_image) = }")
+            rgb = input_image
         input_size = rgb.shape
         assert (
             4 == rgb.dim() and 3 == input_size[-3]
@@ -583,7 +580,7 @@ class iGlemDepthPipeline(DiffusionPipeline):
 
         # Encode image
         rgb_latent = self.encode_rgb(rgb_in)  # [B, 4, h, w]
-
+       
         # Noisy latent for outputs
         target_latent = torch.randn(
             rgb_latent.shape,
@@ -631,8 +628,8 @@ class iGlemDepthPipeline(DiffusionPipeline):
                 noise_pred, t, target_latent, generator=generator
             ).prev_sample
 
-        depth = self.decode_depth(target_latent)  # [B,3,H,W]
-
+        depth = self.decode_depth(target_latent)  # [B, 3, H, W]
+        print(f">>>>>>> depth shape: {depth.shape}")
         # clip prediction
         depth = torch.clip(depth, -1.0, 1.0)
         # shift to [0, 1]

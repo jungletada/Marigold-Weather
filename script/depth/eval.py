@@ -169,14 +169,11 @@ def save_prediction_heatmap(args, depth_pred, depth_raw, pred_name, save_label=F
         else:
             arr = tensor
         plt.figure()
-        plt.axis('off')
-        plt.imshow(arr, cmap=args.cmap)
-        plt.tight_layout(pad=0)
         # Ensure the directory exists before saving
         os.makedirs(os.path.dirname(filename), exist_ok=True)
-        plt.savefig(filename, bbox_inches='tight', pad_inches=0)
+        plt.imsave(filename, arr, cmap=args.cmap)
         plt.close()
-
+        
     pred_heatmap_path = os.path.join(args.output_dir, pred_name.replace('.npy', '_pred.png'))
     save_heatmap(depth_pred, pred_heatmap_path)
     # depth_raw can be a NumPy array already; avoid relying on external device state
@@ -217,7 +214,7 @@ if "__main__" == __name__:
         f.write("\n")
 
     # -------------------- Evaluate --------------------
-    for data in tqdm(dataloader, desc="Evaluating"):
+    for idx, data in enumerate(tqdm(dataloader, desc="Evaluating")):
         # GT data
         depth_raw_ts = data["depth_raw_linear"].squeeze()
         valid_mask_ts = data["valid_mask_raw"].squeeze()
@@ -238,10 +235,11 @@ if "__main__" == __name__:
         if not os.path.exists(pred_path):
             logging.warning(f"Can't find prediction: {pred_path}")
             continue
+        
+        # Convert to float32 to avoid float16 linalg issues
+        depth_pred = np.load(pred_path).astype(np.float32)
+        save_prediction_heatmap(args, depth_pred, depth_raw, pred_name, save_label=True)
 
-        depth_pred = np.load(pred_path)
-        # depth_pred = depth_pred.astype(np.float32)  # Convert to float32 to avoid float16 linalg issues
-        # print(depth_pred.shape, type(depth_pred))
         # Align with GT using least square
         if "least_square" == args.alignment:
             depth_pred, scale, shift = align_depth_least_square(
@@ -286,8 +284,7 @@ if "__main__" == __name__:
         depth_pred_ts = torch.from_numpy(depth_pred).to(device)
         
         # save_filled_depth(args, valid_mask, depth_raw, pred_name)
-        save_prediction_heatmap(args, depth_pred, depth_raw, pred_name, save_label=True)
-
+       
         for met_func in metric_funcs:
             _metric_name = met_func.__name__
             _metric = met_func(depth_pred_ts, depth_raw_ts, valid_mask_ts).item()
@@ -321,7 +318,8 @@ if "__main__" == __name__:
     with open(_save_to, "w+") as f:
         f.write(eval_text)
         logging.info(f"Evaluation metrics saved to {_save_to}")
-        
+    
+    # For Weather KITTI dataset
     result_df = pd.read_csv(per_sample_filename)
     # Apply grouping function: extract_group
     result_df['group'] = result_df['filename'].apply(extract_group)

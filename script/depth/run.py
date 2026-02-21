@@ -29,8 +29,7 @@
 # --------------------------------------------------------------------------
 
 import sys
-import os
-
+import os 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import argparse
@@ -41,38 +40,62 @@ import torch
 from PIL import Image
 from glob import glob
 from tqdm.auto import tqdm
-
+from diffusers import UNet2DConditionModel, AutoencoderKL, DDIMScheduler
+from transformers import CLIPTextModel, CLIPTokenizer
+from marigold.ramit_model.ramit import RAMiTCond
 from marigold import MarigoldDepthPipeline, MarigoldDepthOutput
+from marigold import iGlemDepthPipeline
+from src.util.seeding import seed_all
+from safetensors.torch import load_file as safe_load_file
 
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
 
 
-if "__main__" == __name__:
-    logging.basicConfig(level=logging.INFO)
-
+def get_args():
     # -------------------- Arguments --------------------
     parser = argparse.ArgumentParser(
-        description="Marigold : Monocular Depth Estimation : Multi-image Inference"
+        description="Marigold: Monocular Depth Estimation Multi-image Inference"
     )
     parser.add_argument(
-        "--checkpoint",
+        "--base_checkpoint",
         type=str,
         default="prs-eth/marigold-depth-v1-1",
         help="Checkpoint path or hub name.",
     )
     parser.add_argument(
+        "--finetune_checkpoint",
+        type=str,
+        default="output/train_weather_depth/checkpoint/latest/unet/diffusion_pytorch_model.safetensors",
+        help="Checkpoint path or hub name.",
+    )
+    parser.add_argument(
+        "--version",
+        type=str,
+        default="restore",
+        help="[concat|original|restore]",
+    )
+    parser.add_argument(
+        "--ramit_checkpoint",
+        type=str,
+        default="output/train_rasmit_latent/checkpoint/iter_080000/ramit.pth",
+        help="Checkpoint path or hub name.",
+    )
+    parser.add_argument(
         "--input_rgb_dir",
         type=str,
-        required=True,
+        default="input",
         help="Path to the input image folder.",
     )
     parser.add_argument(
-        "--output_dir", type=str, required=True, help="Output directory."
+        "--output_dir", 
+        type=str, 
+        default="output/example", 
+        help="Output directory."
     )
     parser.add_argument(
         "--denoise_steps",
         type=int,
-        default=None,
+        default=5,
         help="Diffusion denoising steps, more steps results in higher accuracy but slower inference speed. If set to "
         "`None`, default value will be read from checkpoint.",
     )
@@ -133,8 +156,73 @@ if "__main__" == __name__:
     )
 
     args = parser.parse_args()
+    return args
 
-    checkpoint_path = args.checkpoint
+
+def get_pipeline(args):
+    """
+        Get the pipeline for specific models
+    """
+    if args.version == 'concat':
+        unet = UNet2DConditionModel.from_config(args.base_checkpoint, subfolder="unet")
+        unet.conv_in = RAMiTCond()
+        
+        # Load the trained checkpoint weights
+        if args.finetune_checkpoint.endswith(".safetensors"):
+            state_dict = safe_load_file(args.finetune_checkpoint)
+        else:
+            state_dict = torch.load(args.finetune_checkpoint, map_location='cpu')
+            
+        unet.load_state_dict(state_dict)
+        
+        vae = AutoencoderKL.from_pretrained(args.base_checkpoint, subfolder="vae")
+        scheduler = DDIMScheduler.from_pretrained(args.base_checkpoint, subfolder="scheduler")
+        text_encoder = CLIPTextModel.from_pretrained(args.base_checkpoint, subfolder="text_encoder")
+        tokenizer = CLIPTokenizer.from_pretrained(args.base_checkpoint, subfolder="tokenizer")
+        
+        pipeline = iGlemDepthPipeline(
+            unet=unet,
+            vae=vae,
+            scheduler=scheduler,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            variant=args.variant, 
+            torch_dtype=args.dtype,
+        )
+        
+    elif args.version == 'adapter':
+        vae = AutoencoderKL.from_pretrained(args.base_checkpoint, subfolder="vae")
+        scheduler = DDIMScheduler.from_pretrained(args.base_checkpoint, subfolder="scheduler")
+        text_encoder = CLIPTextModel.from_pretrained(args.base_checkpoint, subfolder="text_encoder")
+        tokenizer = CLIPTokenizer.from_pretrained(args.base_checkpoint, subfolder="tokenizer")
+        unet = UNet2DConditionModel.from_pretrained(args.finetune_checkpoint, subfolder="unet")
+        adapter = RAMiTCond.from_pretrained(args.finetune_checkpoint, subfolder="adapter")
+        pipeline = iGlemDepthPipeline(
+            unet=unet,
+            vae=vae,
+            scheduler=scheduler,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            adapter=adapter,
+        )
+    
+    elif args.version == 'original':
+        # Use Original MarigoldDepthPipeline
+        pipeline: MarigoldDepthPipeline = MarigoldDepthPipeline.from_pretrained(
+            args.base_checkpoint, 
+            variant=args.variant, 
+            torch_dtype=args.dtype
+        )
+        
+    else:
+        raise NotImplementedError
+    
+    return pipeline
+      
+    
+if "__main__" == __name__:
+    args = get_args()
+    logging.basicConfig(level=logging.INFO)
     input_rgb_dir = args.input_rgb_dir
     output_dir = args.output_dir
 
@@ -201,35 +289,39 @@ if "__main__" == __name__:
 
     # -------------------- Model --------------------
     if half_precision:
-        dtype = torch.float16
-        variant = "fp16"
-        logging.info(
-            f"Running with half precision ({dtype}), might lead to suboptimal result."
+        args.dtype = torch.float16
+        args.variant = "fp16"
+        logging.warning(
+            f"Running with half precision ({args.dtype}), might lead to suboptimal result."
         )
     else:
-        dtype = torch.float32
-        variant = None
+        args.dtype = torch.float32
+        args.variant = None
 
-    pipe: MarigoldDepthPipeline = MarigoldDepthPipeline.from_pretrained(
-        checkpoint_path, variant=variant, torch_dtype=dtype
-    )
+    pipeline = get_pipeline(args)
 
     try:
-        pipe.enable_xformers_memory_efficient_attention()
+        pipeline.enable_xformers_memory_efficient_attention()
     except ImportError:
         pass  # run without xformers
 
-    pipe = pipe.to(device)
+    pipeline = pipeline.to(device)
     logging.info(
-        f"Loaded depth pipeline: scale_invariant={pipe.scale_invariant}, shift_invariant={pipe.shift_invariant}"
+        f"Loaded depth pipeline: scale_invariant={pipeline.scale_invariant}, shift_invariant={pipeline.shift_invariant}"
     )
-
+    # Move RAMiT module to the same device if it exists
+    if hasattr(pipeline, 'ramit_module') and pipeline.ramit_module is not None:
+        pipeline.ramit_module = pipeline.ramit_module.to(device)
+    
+    logging.info(
+        f"Loaded depth pipeline: scale_invariant={pipeline.scale_invariant}, shift_invariant={pipeline.shift_invariant}"
+    )
+    
     # Print out config
     logging.info(
-        f"Inference settings: checkpoint = `{checkpoint_path}`, "
-        f"with denoise_steps = {denoise_steps or pipe.default_denoising_steps}, "
+        f"with denoise_steps = {denoise_steps or pipeline.default_denoising_steps}, "
         f"ensemble_size = {ensemble_size}, "
-        f"processing resolution = {processing_res or pipe.default_processing_resolution}, "
+        f"processing resolution = {processing_res or pipeline.default_processing_resolution}, "
         f"seed = {seed}; "
         f"color_map = {color_map}."
     )
@@ -250,7 +342,7 @@ if "__main__" == __name__:
                 generator.manual_seed(seed)
 
             # Perform inference
-            pipe_out: MarigoldDepthOutput = pipe(
+            pipe_out: MarigoldDepthOutput = pipeline(
                 input_image,
                 denoising_steps=denoise_steps,
                 ensemble_size=ensemble_size,

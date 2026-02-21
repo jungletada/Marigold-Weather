@@ -1,0 +1,4 @@
+name: cadcd
+disp_name: cadcd_dataset
+dir: data/cadcd
+filenames: data_split/cadc/test_files.txt

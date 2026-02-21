@@ -15,16 +15,16 @@ output_child_dir=${2:-"adapter_only"}
 #     --processing_res 0 \
 #     --dataset_config config/dataset_depth/data_kitti_eigen_test.yaml \
 #     --output_dir output/eval/kitti_eigen_test/${output_child_dir} \
-#     --version restore \
+#     --version original \
 #     --finetune_checkpoint ${finetune_ckpt} \
 
 
-python script/depth/eval.py \
-    --base_data_dir data/kitti \
-    --dataset_config config/dataset_depth/data_kitti_eigen_test.yaml \
-    --alignment least_square \
-    --prediction_dir output/eval/kitti_eigen_test/${output_child_dir} \
-    --output_dir output/eval/kitti_eigen_test/eval_metric
+# python script/depth/eval.py \
+#     --base_data_dir data/kitti \
+#     --dataset_config config/dataset_depth/data_kitti_eigen_test.yaml \
+#     --alignment least_square \
+#     --prediction_dir output/eval/kitti_eigen_test/${output_child_dir} \
+#     --output_dir output/eval/kitti_eigen_test/eval_metric
 
 
 # python script/depth/infer_adapter.py \
@@ -36,6 +36,18 @@ python script/depth/eval.py \
 #     --processing_res 0 \
 #     --dataset_config config/dataset_depth/data_weather_kitti.yaml \
 #     --output_dir output/eval/kitti_eigen_test/reconstruct \
-#     --version restore \
+#     --version original \
 #     --finetune_checkpoint ${finetune_ckpt} \
 #     --ramit_checkpoint output/train_rasmit_latent/checkpoint/iter_080000/ramit.pth
+
+
+python script/depth/run.py \
+    --base_checkpoint checkpoint/marigold-depth-v1-1 \
+    --finetune_checkpoint ${finetune_ckpt} \
+    --seed 2026 \
+    --input_rgb_dir input/kitti_example \
+    --output_dir output/kitti_example \
+    --denoise_steps 4 \
+    --ensemble_size 1 \
+    --processing_res 0 \
+    --version original \
